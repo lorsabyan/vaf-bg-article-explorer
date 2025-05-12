@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="hy">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Հոդվածների որոնման հավելված</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .selected-article {
+            background-color: #e0f2fe; /* Tailwind: bg-sky-100 */
+        }
+        #message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 1.5rem;
+            border-radius: 0.375rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            z-index: 150; 
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+        #message-box.hidden {
+            opacity: 0;
+            transform: translateX(-50%) translateY(-20px);
+        }
+        #message-box.success {
+            background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7;
+        }
+        #message-box.error {
+            background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;
+        }
+        #message-box.info {
+            background-color: #e0f2fe; color: #075985; border: 1px solid #7dd3fc;
+        }
+        #explanation-tooltip {
+            max-width: 320px; 
+            word-wrap: break-word;
+            z-index: 100; 
+        }
+        #explanation-tooltip strong { font-weight: 600; } 
+        #explanation-tooltip em { font-style: italic; } 
+        #explanation-tooltip ul { list-style-type: disc; padding-left: 20px; margin-top: 5px;}
+        #explanation-tooltip li { margin-bottom: 3px; }
+
+
+        #api-key-container {
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+        #api-key-container.expanded {
+            max-height: 200px; 
+            opacity: 1;
+        }
+        /* Modal Styles */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 190; 
+        }
+        .modal-content {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 1.5rem; 
+            border-radius: 0.5rem; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); 
+            width: 90%;
+            max-width: 600px; 
+            z-index: 200; 
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-body {
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        #key-points-body ul {
+            list-style-type: disc; 
+            padding-left: 1.5rem; 
+            margin-top: 0.5rem;
+        }
+        #key-points-body li {
+            margin-bottom: 0.5rem; 
+            line-height: 1.6; 
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 flex flex-col h-screen overflow-hidden">
+
+    <div id="message-box" class="hidden"></div>
+
+    <div id="login-page" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-2xl font-bold text-center text-sky-700 mb-6">Մուտք համակարգ</h2>
+            <div class="mb-4">
+                <label for="email" class="block text-sm font-medium text-slate-700 mb-1">Էլեկտրոնային փոստ</label>
+                <input type="email" id="email" placeholder="մուտքագրեք էլ. փոստը" class="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-sky-500 focus:border-sky-500 shadow-sm">
+            </div>
+            <div class="mb-6">
+                <label for="password" class="block text-sm font-medium text-slate-700 mb-1">Գաղտնաբառ</label>
+                <input type="password" id="password" placeholder="մուտքագրեք գաղտնաբառը" class="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-sky-500 focus:border-sky-500 shadow-sm">
+            </div>
+            <button id="login-button" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out shadow-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50">
+                Մուտք գործել
+            </button>
+        </div>
+    </div>
+
+    <div id="main-app-page" class="hidden flex flex-col h-full">
+        <header class="bg-sky-700 text-white p-4 shadow-md shrink-0">
+            <div class="container mx-auto">
+                <div class="flex flex-col sm:flex-row justify-between items-center">
+                    <h1 class="text-xl sm:text-2xl font-bold mb-2 sm:mb-0">Հոդվածների որոնում</h1>
+                    <div class="flex items-center space-x-2">
+                        <button id="api-key-toggle-button" title="Gemini API բանալի" class="p-2 bg-sky-600 hover:bg-sky-500 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />
+                            </svg>
+                        </button>
+                        <button id="logout-button" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-3 rounded-md transition duration-150 ease-in-out shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400">
+                            Ելք
+                        </button>
+                    </div>
+                </div>
+                <div id="api-key-container" class="bg-sky-600 p-3 rounded-md mt-2 shadow">
+                    <label for="gemini-api-key" class="block text-sm font-medium text-sky-100 mb-1">Gemini API բանալի</label>
+                    <div class="flex space-x-2">
+                        <input type="password" id="gemini-api-key" placeholder="Ձեր Gemini API բանալին" class="flex-grow px-3 py-1.5 border border-sky-400 rounded-md text-slate-800 shadow-sm focus:ring-sky-300 focus:border-sky-300">
+                        <button id="save-api-key-button" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-1.5 px-3 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-400">Պահպանել</button>
+                        <button id="clear-api-key-button" class="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-1.5 px-3 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">Մաքրել</button>
+                    </div>
+                    <p class="text-xs text-sky-200 mt-1">Բանալին պահպանվում է ձեր զննարկչի `localStorage`-ում։</p>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex flex-1 overflow-hidden">
+            <aside id="search-sidebar" class="w-64 md:w-80 lg:w-96 bg-slate-50 p-4 flex flex-col shrink-0 border-r border-slate-300">
+                <div class="shrink-0">
+                    <h2 class="text-lg font-semibold text-sky-700 mb-3">Որոնում</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="search-term-sidebar" class="sr-only">Որոնման դաշտ</label>
+                            <input type="text" id="search-term-sidebar" placeholder="Որոնել հոդված..." class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-sky-500 focus:border-sky-500 text-slate-800 shadow-sm">
+                        </div>
+                        <button id="search-button-sidebar" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400">
+                            Որոնել
+                        </button>
+                    </div>
+                </div>
+
+                <div id="search-results-panel" class="mt-4 flex-1 bg-white p-3 rounded-lg shadow-inner border border-slate-200 overflow-y-auto">
+                    <h3 class="text-md font-semibold text-sky-700 mb-2 border-b pb-1">Որոնման արդյունքներ</h3>
+                    <ul id="results-list" class="space-y-1 text-sm">
+                        <li class="p-2 rounded-md text-slate-500">Խնդրում ենք որոնում կատարել։</li>
+                    </ul>
+                </div>
+            </aside>
+
+            <main id="content-area" class="flex-1 p-4 overflow-y-auto">
+                <div id="article-content-panel" class="w-full bg-white p-6 rounded-lg shadow-lg h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-3 border-b pb-2 shrink-0">
+                        <h2 class="text-lg font-semibold text-sky-700">Հոդվածի բովանդակություն</h2>
+                        <button id="get-key-points-button" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-1.5 px-3 rounded-md text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 hidden">
+                            Հիմնական կետեր
+                        </button>
+                    </div>
+                    <div id="article-view" class="prose max-w-none flex-1 overflow-y-auto">
+                        <p class="text-slate-500">Ընտրեք հոդված ձախ վահանակից՝ բովանդակությունը դիտելու համար։</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="key-points-modal" class="modal-backdrop hidden">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold text-sky-700">Հոդվածի հիմնական կետերը</h3>
+                <button id="close-key-points-modal" class="text-slate-500 hover:text-slate-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div id="key-points-body" class="modal-body prose-sm sm:prose max-w-none">
+                </div>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // API URLs
+            const API_BASE_URL_IDENTITY = 'https://identity.api.bg.cluster.vecto.digital/api';
+            const API_BASE_URL_INDEXING = 'https://indexing.api.bg.cluster.vecto.digital/api';
+            const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=';
+
+
+            // DOM Elements
+            const loginPage = document.getElementById('login-page');
+            const mainAppPage = document.getElementById('main-app-page');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const loginButton = document.getElementById('login-button');
+            
+            const searchTermInput = document.getElementById('search-term-sidebar'); 
+            const searchButton = document.getElementById('search-button-sidebar'); 
+            
+            const logoutButton = document.getElementById('logout-button');
+            const resultsList = document.getElementById('results-list'); 
+            const articleView = document.getElementById('article-view');
+            const messageBox = document.getElementById('message-box');
+
+            const apiKeyToggleBtn = document.getElementById('api-key-toggle-button');
+            const apiKeyContainer = document.getElementById('api-key-container');
+            const geminiApiKeyInput = document.getElementById('gemini-api-key');
+            const saveApiKeyButton = document.getElementById('save-api-key-button');
+            const clearApiKeyButton = document.getElementById('clear-api-key-button');
+
+            const getKeyPointsButton = document.getElementById('get-key-points-button');
+            const keyPointsModal = document.getElementById('key-points-modal');
+            const keyPointsBody = document.getElementById('key-points-body');
+            const closeKeyPointsModalButton = document.getElementById('close-key-points-modal');
+
+
+            // Application State
+            let accessToken = localStorage.getItem('accessToken');
+            let geminiApiKey = localStorage.getItem('geminiApiKey');
+            let articlesCache = [];
+            let currentArticlePlainText = ""; 
+
+            // Tooltip Element
+            const explanationTooltip = document.createElement('div');
+            explanationTooltip.id = 'explanation-tooltip';
+            explanationTooltip.className = 'hidden absolute bg-white border border-slate-400 p-3 rounded-lg shadow-xl text-sm text-slate-700'; 
+            explanationTooltip.style.zIndex = '100'; 
+            document.body.appendChild(explanationTooltip);
+
+            if (geminiApiKey) {
+                geminiApiKeyInput.value = geminiApiKey;
+            }
+
+            if (accessToken) {
+                showMainAppPage();
+            } else {
+                showLoginPage();
+            }
+
+            apiKeyToggleBtn.addEventListener('click', () => {
+                apiKeyContainer.classList.toggle('expanded');
+            });
+
+            saveApiKeyButton.addEventListener('click', () => {
+                const key = geminiApiKeyInput.value.trim();
+                if (key) {
+                    localStorage.setItem('geminiApiKey', key);
+                    geminiApiKey = key;
+                    showMessage('Gemini API բանալին պահպանված է։', 'success');
+                    apiKeyContainer.classList.remove('expanded'); 
+                } else {
+                    showMessage('Խնդրում ենք մուտքագրել Gemini API բանալին։', 'error');
+                }
+            });
+            
+            clearApiKeyButton.addEventListener('click', () => {
+                localStorage.removeItem('geminiApiKey');
+                geminiApiKey = null;
+                geminiApiKeyInput.value = '';
+                showMessage('Gemini API բանալին մաքրված է։', 'info');
+            });
+
+            loginButton.addEventListener('click', handleLogin);
+            emailInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') passwordInput.focus(); });
+            passwordInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') handleLogin(); });
+            
+            searchButton.addEventListener('click', handleSearch);
+            searchTermInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') handleSearch(); });
+            
+            logoutButton.addEventListener('click', handleLogout);
+            getKeyPointsButton.addEventListener('click', handleGetKeyPoints);
+            closeKeyPointsModalButton.addEventListener('click', () => keyPointsModal.classList.add('hidden'));
+            keyPointsModal.addEventListener('click', (event) => {
+                if (event.target === keyPointsModal) {
+                    keyPointsModal.classList.add('hidden');
+                }
+            });
+
+
+            function showMessage(message, type = 'info', duration = 3000) {
+                messageBox.textContent = message;
+                messageBox.className = ''; 
+                messageBox.classList.add(type, 'p-4', 'rounded-md', 'shadow-lg', 'fixed', 'top-5', 'left-1/2', '-translate-x-1/2', 'transition-all', 'duration-300', 'ease-in-out');
+                messageBox.style.zIndex = '150'; 
+                
+                if (type === 'success') messageBox.classList.add('bg-green-100', 'text-green-700', 'border', 'border-green-300');
+                else if (type === 'error') messageBox.classList.add('bg-red-100', 'text-red-700', 'border', 'border-red-300');
+                else messageBox.classList.add('bg-sky-100', 'text-sky-700', 'border', 'border-sky-300');
+
+                messageBox.classList.remove('hidden', 'opacity-0', '-translate-y-5');
+                messageBox.classList.add('opacity-100', 'translate-y-0');
+
+                setTimeout(() => {
+                    messageBox.classList.add('opacity-0', '-translate-y-5');
+                    setTimeout(() => messageBox.classList.add('hidden'), 300); 
+                }, duration);
+            }
+
+            function showLoginPage() {
+                loginPage.classList.remove('hidden');
+                mainAppPage.style.display = 'none';
+                mainAppPage.classList.add('hidden'); 
+                emailInput.value = ''; 
+                passwordInput.value = '';
+                getKeyPointsButton.classList.add('hidden');
+            }
+
+            function showMainAppPage() {
+                loginPage.classList.add('hidden');
+                mainAppPage.style.display = 'flex'; 
+                mainAppPage.classList.remove('hidden');
+                resultsList.innerHTML = '<li class="p-2 rounded-md text-slate-500">Խնդրում ենք որոնում կատարել։</li>'; 
+                articleView.innerHTML = '<p class="text-slate-500">Ընտրեք հոդված ձախ վահանակից՝ բովանդակությունը դիտելու համար։</p>';
+                currentArticlePlainText = ""; 
+                getKeyPointsButton.classList.add('hidden'); 
+            }
+
+            async function handleLogin() {
+                const email = emailInput.value.trim();
+                const password = passwordInput.value.trim();
+                if (!email || !password) {
+                    showMessage('Էլ. փոստը և գաղտնաբառը պարտադիր են։', 'error');
+                    return;
+                }
+                loginButton.disabled = true;
+                loginButton.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle> <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> Մուտք գործում...`;
+
+                try {
+                    const response = await fetch(`${API_BASE_URL_IDENTITY}/User/SignIn`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const result = await response.json();
+                    if (response.ok && result.accepted && result.data && result.data.length > 0) {
+                        accessToken = result.data[0].accessToken;
+                        localStorage.setItem('accessToken', accessToken); 
+                        showMessage('Հաջող մուտք։', 'success');
+                        showMainAppPage();
+                    } else {
+                        const errorMessage = result.errorMessages?.join(', ') || 'Մուտքը ձախողվեց։ Ստուգեք ձեր տվյալները։';
+                        showMessage(errorMessage, 'error');
+                    }
+                } catch (error) {
+                    showMessage('Մուտքի ժամանակ տեղի ունեցավ սխալ։', 'error');
+                    console.error("Login error:", error);
+                } finally {
+                    loginButton.disabled = false;
+                    loginButton.textContent = 'Մուտք գործել';
+                }
+            }
+
+            function handleLogout() {
+                accessToken = null;
+                localStorage.removeItem('accessToken');
+                articlesCache = [];
+                currentArticlePlainText = "";
+                showMessage('Դուք հաջողությամբ դուրս եկաք։', 'info');
+                explanationTooltip.classList.add('hidden'); 
+                apiKeyContainer.classList.remove('expanded'); 
+                keyPointsModal.classList.add('hidden');
+                getKeyPointsButton.classList.add('hidden');
+                showLoginPage();
+            }
+
+            async function handleSearch() {
+                const searchTerm = searchTermInput.value.trim(); 
+                if (!searchTerm) {
+                    showMessage('Խնդրում ենք մուտքագրել որոնման բառ։', 'info');
+                    resultsList.innerHTML = '<li class="p-2 rounded-md text-slate-500">Որոնման համար մուտքագրեք տեքստ։</li>';
+                    return;
+                }
+                if (!accessToken) {
+                    showMessage('Նույնականացման թոքենը բացակայում է։', 'error');
+                    handleLogout(); 
+                    return;
+                }
+
+                resultsList.innerHTML = '<li class="p-2 rounded-md text-slate-500 flex items-center"><svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-sky-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle> <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg>Որոնում...</li>';
+                articleView.innerHTML = '<p class="text-slate-500">Ընտրեք հոդված ձախ վահանակից՝ բովանդակությունը դիտելու համար։</p>';
+                currentArticlePlainText = ""; 
+                explanationTooltip.classList.add('hidden'); 
+                getKeyPointsButton.classList.add('hidden');
+
+
+                try {
+                    const response = await fetch(`${API_BASE_URL_INDEXING}/Map/Search?Term=${encodeURIComponent(searchTerm)}&PageSize=20&PageNumber=0&LanguageId=1`, {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+                    if (response.status === 401) { 
+                        showMessage('Ձեր սեսիան սպառվել է։', 'error');
+                        handleLogout();
+                        return;
+                    }
+                    const result = await response.json();
+                    if (response.ok && result.accepted) {
+                        if (result.data?.[0]?.items?.length > 0) {
+                            articlesCache = result.data[0].items; 
+                            displaySearchResults(articlesCache);
+                            showMessage(`Գտնվել է ${result.data[0].items.length} հոդված։`, 'success');
+                        } else {
+                            resultsList.innerHTML = '<li class="p-2 rounded-md text-slate-500">Հոդվածներ չեն գտնվել։</li>';
+                            showMessage('Հոդվածներ չեն գտնվել։', 'info');
+                        }
+                    } else {
+                        const errorMessage = result.errorMessages?.join(', ') || 'Որոնումը ձախողվեց։';
+                        showMessage(errorMessage, 'error');
+                        resultsList.innerHTML = `<li class="p-2 rounded-md text-red-500">${errorMessage}</li>`;
+                    }
+                } catch (error) {
+                    showMessage('Որոնման ժամանակ տեղի ունեցավ սխալ։', 'error');
+                    resultsList.innerHTML = '<li class="p-2 rounded-md text-red-500">Որոնման սխալ։</li>';
+                    console.error("Search error:", error);
+                }
+            }
+
+            function displaySearchResults(items) {
+                resultsList.innerHTML = ''; 
+                if (!items || items.length === 0) {
+                    resultsList.innerHTML = '<li class="p-2 rounded-md text-slate-500">Արդյունքներ չկան։</li>';
+                    return;
+                }
+                items.forEach(item => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = item.mainTitle || item.shortTitle || 'Անանուն հոդված';
+                    listItem.className = 'p-2 hover:bg-sky-100 cursor-pointer rounded-md border border-transparent hover:border-sky-300 transition-colors duration-150 ease-in-out'; 
+                    listItem.dataset.articleId = item.id; 
+                    listItem.addEventListener('click', () => {
+                        displayArticleContent(item.id);
+                        Array.from(resultsList.children).forEach(li => li.classList.remove('selected-article', 'bg-sky-100', 'font-semibold'));
+                        listItem.classList.add('selected-article', 'bg-sky-100', 'font-semibold');
+                    });
+                    resultsList.appendChild(listItem);
+                });
+            }
+
+            function displayArticleContent(articleId) {
+                explanationTooltip.classList.add('hidden'); 
+                const article = articlesCache.find(art => art.id === articleId);
+                if (article) {
+                    let contentHtml = `<h3 class="text-xl font-bold text-sky-800 mb-4">${article.mainTitle || article.shortTitle}</h3>`;
+                    let articleFormattedText = '<p class="text-slate-500">Այս հոդվածի համար մանրամասն բովանդակություն չկա։</p>';
+                    if (article.content?.length > 0) {
+                        const armenianContent = article.content.find(c => c.languageId === 1); 
+                        if (armenianContent?.formattedText) articleFormattedText = armenianContent.formattedText;
+                        else if (article.content[0]?.formattedText) articleFormattedText = article.content[0].formattedText; 
+                    } else if (article.formattedText) { 
+                        articleFormattedText = article.formattedText;
+                    }
+                    contentHtml += articleFormattedText;
+                    if (article.featuredImageResized || article.featuredImage) {
+                        contentHtml += `<div class="my-4"><img src="${article.featuredImageResized || article.featuredImage}" alt="${article.mainTitle || 'Հոդվածի նկար'}" class="rounded-md shadow-md max-w-full h-auto mx-auto" onerror="this.onerror=null; this.src='https://placehold.co/600x400/E2E8F0/4A5568?text=Պատկեր+չկա'; this.alt='Պատկերը հասանելի չէ';"></div>`;
+                    }
+                    articleView.innerHTML = contentHtml;
+                    currentArticlePlainText = articleView.textContent || "";
+                    getKeyPointsButton.classList.remove('hidden'); 
+                } else {
+                    articleView.innerHTML = '<p class="text-red-500">Սխալ։ Հնարավոր չէ գտնել հոդվածի տվյալները։</p>';
+                    currentArticlePlainText = ""; 
+                    getKeyPointsButton.classList.add('hidden'); 
+                }
+            }
+
+            articleView.addEventListener('mouseup', (event) => {
+                if (explanationTooltip.contains(event.target)) return;
+                
+                const selection = window.getSelection();
+                if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+                    explanationTooltip.classList.add('hidden');
+                    return;
+                }
+
+                const range = selection.getRangeAt(0);
+                let selectedTextForAPI = "";
+                let displayRectForTooltip = range.getBoundingClientRect(); 
+
+                if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+                    const textNode = range.startContainer;
+                    const textContent = textNode.textContent;
+                    let start = range.startOffset;
+                    let end = range.endOffset;
+
+                    // Trim trailing spaces from the initial selection's end point first.
+                    while (end > start && textContent[end - 1] === ' ') {
+                        end--;
+                    }
+                    // If, after trimming spaces, the selection is empty (e.g., only spaces were selected), bail.
+                    if (start === end && selection.toString().trim() === '') {
+                        explanationTooltip.classList.add('hidden');
+                        return;
+                    }
+
+
+                    const wordBoundaryRegex = /[\s\.,;:!?()\[\]{}"'«»“„”]/; 
+
+                    // Expand to the left to the beginning of the word.
+                    while (start > 0 && !wordBoundaryRegex.test(textContent[start - 1])) {
+                        start--;
+                    }
+
+                    // Expand to the right to the end of the word (using the potentially space-trimmed 'end').
+                    while (end < textContent.length && !wordBoundaryRegex.test(textContent[end])) {
+                        end++;
+                    }
+                    
+                    const newRange = document.createRange();
+                    newRange.setStart(textNode, start);
+                    newRange.setEnd(textNode, end);
+                    selectedTextForAPI = newRange.toString().trim(); 
+                    
+                    if (selectedTextForAPI) { 
+                         selection.removeAllRanges(); 
+                         selection.addRange(newRange); 
+                         displayRectForTooltip = newRange.getBoundingClientRect(); 
+                    } else { // If after all adjustments selectedTextForAPI is empty, hide tooltip
+                        explanationTooltip.classList.add('hidden');
+                        return;
+                    }
+
+                } else { 
+                    selectedTextForAPI = selection.toString().trim();
+                    if (!selectedTextForAPI) { // Also for multi-node, if it trims to nothing
+                        explanationTooltip.classList.add('hidden');
+                        return;
+                    }
+                }
+
+
+                if (selectedTextForAPI) { 
+                    if (!geminiApiKey) {
+                        showMessage('Խնդրում ենք մուտքագրել և պահպանել ձեր Gemini API բանալին՝ բացատրություններ ստանալու համար։', 'info', 5000);
+                        apiKeyContainer.classList.add('expanded'); 
+                        explanationTooltip.classList.add('hidden');
+                        return;
+                    }
+
+                    explanationTooltip.innerHTML = `<div class="flex items-center"><svg class="animate-spin h-4 w-4 mr-2 text-sky-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle> <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg>Բեռնվում է...</div>`;
+                    
+                    let topPosition = displayRectForTooltip.bottom + window.scrollY + 5; 
+                    let leftPosition = displayRectForTooltip.left + window.scrollX;
+
+                    explanationTooltip.style.top = `${topPosition}px`;
+                    explanationTooltip.style.left = `${leftPosition}px`;
+                    explanationTooltip.classList.remove('hidden');
+
+                    const tooltipViewportRect = explanationTooltip.getBoundingClientRect();
+                    if (tooltipViewportRect.right > window.innerWidth - 10) { 
+                        explanationTooltip.style.left = `${window.innerWidth - tooltipViewportRect.width - 10 + window.scrollX}px`;
+                    }
+                    if (tooltipViewportRect.left < 10) { 
+                        explanationTooltip.style.left = `${10 + window.scrollX}px`;
+                    }
+                    if (tooltipViewportRect.bottom > window.innerHeight -10) { 
+                        explanationTooltip.style.top = `${displayRectForTooltip.top + window.scrollY - tooltipViewportRect.height - 5}px`;
+                    }
+
+                    fetchExplanation(selectedTextForAPI, explanationTooltip);
+                } else { 
+                    explanationTooltip.classList.add('hidden'); 
+                }
+            });
+
+            document.addEventListener('mousedown', (event) => {
+                if (!explanationTooltip.classList.contains('hidden')) {
+                    const isClickInsideArticleView = articleView.contains(event.target);
+                    const isClickInsideTooltip = explanationTooltip.contains(event.target);
+                    if (!isClickInsideArticleView && !isClickInsideTooltip) {
+                        explanationTooltip.classList.add('hidden');
+                    }
+                }
+            });
+            
+            async function fetchExplanation(selectedTerm, tooltipElement) {
+                if (!geminiApiKey) {
+                    tooltipElement.innerHTML = 'Gemini API բանալին տրամադրված չէ։';
+                    apiKeyContainer.classList.add('expanded'); 
+                    return;
+                }
+
+                let promptText = `Հոդվածի ամբողջական տեքստը հետևյալն է՝
+---
+${currentArticlePlainText}
+---
+Հաշվի առնելով վերոնշյալ հոդվածի համատեքստը, խնդրում եմ բացատրիր «${selectedTerm}» տերմինը կամ արտահայտությունը հայերենով։ Տուր հակիրճ և հասկանալի բացատրություն։ Պատասխանը ֆորմատավորիր **միայն որպես HTML**։ **Մի՛ ներառիր որևէ նախաբան կամ վերջաբան, այլ միայն բացատրությունը։ Մի՛ օգտագործիր markdown կամ markdown code fences (օրինակ՝ \`\`\`html կամ \`\`\`):** Օգտագործիր <strong> թեգը թավատառի համար, <em> թեգը շեղատառի համար, և <br> թեգը տողադարձերի համար։ Եթե պատասխանը ցուցակ է, օգտագործիր <ul> և <li> HTML թեգերը (օրինակ՝ <ul><li>Կետ 1</li><li>Կետ 2</li></ul>)։`;
+                
+                const MAX_PROMPT_LENGTH = 30000; 
+                if (promptText.length > MAX_PROMPT_LENGTH) {
+                    const excessLength = promptText.length - MAX_PROMPT_LENGTH;
+                    const contextStartIndex = promptText.indexOf("---") + 3; 
+                    const contextEndIndex = promptText.lastIndexOf("---"); 
+                    
+                    if (contextEndIndex > contextStartIndex && (contextEndIndex - contextStartIndex) > excessLength) {
+                         const cutPoint = contextStartIndex + Math.floor((contextEndIndex - contextStartIndex - excessLength) / 2);
+                         const newArticlePlainText = currentArticlePlainText.substring(0, cutPoint - contextStartIndex) + 
+                                                   "\n... [հոդվածի միջնամասը կրճատված է] ...\n" + 
+                                                   currentArticlePlainText.substring(cutPoint - contextStartIndex + excessLength);
+                        
+                         promptText = `Հոդվածի ամբողջական տեքստը հետևյալն է՝
+---
+${newArticlePlainText}
+---
+Հաշվի առնելով վերոնշյալ հոդվածի համատեքստը, խնդրում եմ բացատրիր «${selectedTerm}» տերմինը կամ արտահայտությունը հայերենով։ Տուր հակիրճ և հասկանալի բացատրություն։ Պատասխանը ֆորմատավորիր **միայն որպես HTML**։ **Մի՛ ներառիր որևէ նախաբան կամ վերջաբան, այլ միայն բացատրությունը։ Մի՛ օգտագործիր markdown կամ markdown code fences (օրինակ՝ \`\`\`html կամ \`\`\`):** Օգտագործիր <strong> թեգը թավատառի համար, <em> թեգը շեղատառի համար, և <br> թեգը տողադարձերի համար։ Եթե պատասխանը ցուցակ է, օգտագործիր <ul> և <li> HTML թեգերը (օրինակ՝ <ul><li>Կետ 1</li><li>Կետ 2</li></ul>)։`;
+                        showMessage('Հոդվածի համատեքստը կրճատվել է՝ երկարության պատճառով։', 'info', 4000);
+                    } else { 
+                        promptText = promptText.substring(0, MAX_PROMPT_LENGTH - 50) + "... [հարցումը կրճատված է]";
+                         showMessage('Հարցումը կրճատվել է՝ երկարության պատճառով։', 'info', 4000);
+                    }
+                }
+
+                try {
+                    const geminiResponse = await fetch(`${GEMINI_API_ENDPOINT}${geminiApiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: promptText }] }],
+                            generationConfig: { 
+                               temperature: 0.4, 
+                               topK: 1,
+                               topP: 0.9,
+                               maxOutputTokens: 300, 
+                             }
+                        }),
+                    });
+
+                    let htmlExplanation = "";
+
+                    if (!geminiResponse.ok) { 
+                        const errorData = await geminiResponse.json();
+                        console.error("Gemini API Error Response:", errorData);
+                        let errorMessage = `Gemini API սխալ (${geminiResponse.status}): `;
+                        if (errorData.error && errorData.error.message) errorMessage += errorData.error.message;
+                        else errorMessage += 'Անհայտ սխալ։';
+
+                        if (geminiResponse.status === 400 && errorData.error?.message?.toLowerCase().includes("api key not valid")) {
+                             errorMessage = "Gemini API բանալին սխալ է։ Խնդրում ենք ստուգել այն։";
+                             apiKeyContainer.classList.add('expanded'); 
+                        } else if (geminiResponse.status === 429) { 
+                            errorMessage = "Gemini API-ի օգտագործման սահմանաչափը գերազանցվել է։ Փորձեք ավելի ուշ։";
+                        }
+                        htmlExplanation = `<span class="text-red-600">${errorMessage}</span>`;
+                    } else { 
+                        const data = await geminiResponse.json();
+                        if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                            htmlExplanation = data.candidates[0].content.parts[0].text;
+                            
+                            if (htmlExplanation.trim().startsWith("```html")) {
+                                htmlExplanation = htmlExplanation.substring(htmlExplanation.indexOf("```html") + 7);
+                            } else if (htmlExplanation.trim().startsWith("```")) {
+                                htmlExplanation = htmlExplanation.substring(htmlExplanation.indexOf("```") + 3);
+                            }
+                            
+                            if (htmlExplanation.trim().endsWith("```")) {
+                                htmlExplanation = htmlExplanation.substring(0, htmlExplanation.lastIndexOf("```"));
+                            }
+                            htmlExplanation = htmlExplanation.trim();
+
+                            const introPhrasesToRemove = [
+                                `Ահա «${selectedTerm}» տերմինի բացատրությունը HTML ֆորմատով.`,
+                                `Ահա «${selectedTerm}» տերմինի բացատրությունը.`,
+                                `Սա «${selectedTerm}» տերմինի բացատրությունն է HTML ֆորմատով.`,
+                                `Սա «${selectedTerm}» տերմինի բացատրությունն է.`
+                            ];
+                            for (const phrase of introPhrasesToRemove) {
+                                if (htmlExplanation.trim().toLowerCase().startsWith(phrase.toLowerCase())) {
+                                    htmlExplanation = htmlExplanation.substring(htmlExplanation.toLowerCase().indexOf(phrase.toLowerCase()) + phrase.length).trim();
+                                    while (htmlExplanation.toLowerCase().startsWith("<br>")) {
+                                        htmlExplanation = htmlExplanation.substring(4).trim();
+                                    }
+                                    break; 
+                                }
+                            }
+
+                        } else if (data.promptFeedback?.blockReason) { 
+                            htmlExplanation = `<span class="text-orange-600">Հարցումը արգելափակվել է: ${data.promptFeedback.blockReason}</span>`;
+                        } else { 
+                            htmlExplanation = 'Անսպասելի պատասխան Gemini API-ից։';
+                        }
+                    }
+                    
+                    tooltipElement.innerHTML = `<div>${htmlExplanation}</div>`;
+
+                } catch (error) { 
+                    console.error("Fetch explanation error:", error);
+                    tooltipElement.innerHTML = `<span class="text-red-600">Բացատրությունը բերելիս ցանցային կամ այլ սխալ տեղի ունեցավ։ (${error.message})</span>`;
+                }
+            }
+
+            async function handleGetKeyPoints() {
+                if (!currentArticlePlainText) {
+                    showMessage('Խնդրում ենք նախ ընտրել և դիտել հոդված։', 'info');
+                    return;
+                }
+                if (!geminiApiKey) {
+                    showMessage('Խնդրում ենք մուտքագրել և պահպանել ձեր Gemini API բանալին։', 'info', 5000);
+                    apiKeyContainer.classList.add('expanded');
+                    return;
+                }
+
+                keyPointsBody.innerHTML = `<div class="flex items-center justify-center p-4"><svg class="animate-spin h-6 w-6 mr-3 text-sky-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle> <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg>Հիմնական կետերի բեռնում...</div>`;
+                keyPointsModal.classList.remove('hidden');
+
+                let promptText = `Հոդվածի ամբողջական տեքստը հետևյալն է՝
+---
+${currentArticlePlainText}
+---
+Խնդրում եմ այս հոդվածից առանձնացրու հիմնական կետերը (key points) հայերենով։ Ներկայացրու դրանք **միայն** որպես կարճ, հստակ կետերի ցանկ։ Յուրաքանչյուր կետ սկսիր նոր տողից։ **Մի՛ ներառիր որևէ նախաբան կամ վերջաբան, այլ միայն կետերը։** Մի՛ օգտագործիր markdown-ի նշաններ (օրինակ՝ *, -) կետերի սկզբում։`;
+
+                const MAX_PROMPT_LENGTH = 30000; 
+                if (promptText.length > MAX_PROMPT_LENGTH) {
+                     const excessLength = promptText.length - MAX_PROMPT_LENGTH;
+                    const contextStartIndex = promptText.indexOf("---") + 3; 
+                    const contextEndIndex = promptText.lastIndexOf("---"); 
+                    if (contextEndIndex > contextStartIndex && (contextEndIndex - contextStartIndex) > excessLength) {
+                         const cutPoint = contextStartIndex + Math.floor((contextEndIndex - contextStartIndex - excessLength) / 2);
+                         const newArticlePlainText = currentArticlePlainText.substring(0, cutPoint - contextStartIndex) + 
+                                                   "\n... [հոդվածի միջնամասը կրճատված է] ...\n" + 
+                                                   currentArticlePlainText.substring(cutPoint - contextStartIndex + excessLength);
+                         promptText = `Հոդվածի ամբողջական տեքստը հետևյալն է՝
+---
+${newArticlePlainText}
+---
+Խնդրում եմ այս հոդվածից առանձնացրու հիմնական կետերը (key points) հայերենով։ Ներկայացրու դրանք **միայն** որպես կարճ, հստակ կետերի ցանկ։ Յուրաքանչյուր կետ սկսիր նոր տողից։ **Մի՛ ներառիր որևէ նախաբան կամ վերջաբան, այլ միայն կետերը։** Մի՛ օգտագործիր markdown-ի նշաններ (օրինակ՝ *, -) կետերի սկզբում։`;
+                    } else { 
+                        promptText = promptText.substring(0, MAX_PROMPT_LENGTH - 50) + "... [հարցումը կրճատված է]";
+                    }
+                }
+                
+                try {
+                    const geminiResponse = await fetch(`${GEMINI_API_ENDPOINT}${geminiApiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: promptText }] }],
+                            generationConfig: { 
+                               temperature: 0.2, 
+                               topK: 1,
+                               topP: 0.9, 
+                               maxOutputTokens: 500, 
+                             }
+                        }),
+                    });
+
+                    let keyPointsHtml = "";
+
+                    if (!geminiResponse.ok) { 
+                        const errorData = await geminiResponse.json();
+                        console.error("Gemini API Error (Key Points):", errorData);
+                        let errorMessage = `Gemini API սխալ (${geminiResponse.status}): `;
+                        if (errorData.error && errorData.error.message) errorMessage += errorData.error.message;
+                        else errorMessage += 'Անհայտ սխալ։';
+                        if (geminiResponse.status === 400 && errorData.error?.message?.toLowerCase().includes("api key not valid")) {
+                             errorMessage = "Gemini API բանալին սխալ է։";
+                             apiKeyContainer.classList.add('expanded'); 
+                        } else if (geminiResponse.status === 429) { 
+                            errorMessage = "Gemini API-ի սահմանաչափը գերազանցվել է։";
+                        }
+                        keyPointsHtml = `<p class="text-red-600">${errorMessage}</p>`;
+                    } else { 
+                        const data = await geminiResponse.json();
+                        if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                            let pointsText = data.candidates[0].content.parts[0].text;
+                            const introductoryPhrases = [
+                                "Ահա հոդվածի հիմնական կետերը.",
+                                "Հոդվածի հիմնական կետերն են.",
+                                "Ստորև ներկայացված են հոդվածի հիմնական կետերը."
+                            ];
+                            for (const phrase of introductoryPhrases) {
+                                if (pointsText.toLowerCase().startsWith(phrase.toLowerCase())) {
+                                    pointsText = pointsText.substring(phrase.length).trim();
+                                    break; 
+                                }
+                            }
+
+                            const pointsArray = pointsText.split('\n').filter(line => line.trim() !== '');
+                            
+                            if (pointsArray.length > 0) {
+                                keyPointsHtml = '<ul>'; 
+                                pointsArray.forEach(point => {
+                                    const cleanPoint = point.replace(/^[\*\-\•\⁃\‣]\s*/, '').trim();
+                                    if (cleanPoint) { 
+                                       keyPointsHtml += `<li>${cleanPoint}</li>`;
+                                    }
+                                });
+                                keyPointsHtml += '</ul>';
+                            } else {
+                                keyPointsHtml = '<p>Հիմնական կետեր չեն գտնվել։</p>';
+                            }
+                        } else if (data.promptFeedback?.blockReason) { 
+                            keyPointsHtml = `<p class="text-orange-600">Հարցումը արգելափակվել է: ${data.promptFeedback.blockReason}</p>`;
+                        } else { 
+                            keyPointsHtml = '<p>Անսպասելի պատասխան Gemini API-ից հիմնական կետերի համար։</p>';
+                        }
+                    }
+                    keyPointsBody.innerHTML = keyPointsHtml;
+
+                } catch (error) { 
+                    console.error("Fetch key points error:", error);
+                    keyPointsBody.innerHTML = `<p class="text-red-600">Հիմնական կետերը բերելիս ցանցային կամ այլ սխալ տեղի ունեցավ։ (${error.message})</p>`;
+                }
+            }
+
+        });
+    </script>
+</body>
+</html>
